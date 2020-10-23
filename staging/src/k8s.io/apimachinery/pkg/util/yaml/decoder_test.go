@@ -430,3 +430,25 @@ stuff: 1
 		t.Fatalf("expected %q to be of type YAMLSyntaxError", err.Error())
 	}
 }
+
+func TestUnmarshal(t *testing.T) {
+	yamlWithInteger := []byte(`
+replicas: 1`)
+	obj := make(map[string]interface{})
+	if err := Unmarshal(yamlWithInteger, &obj); err != nil {
+		t.Fatalf("unexpected error unmarshaling yaml: %v", err)
+	}
+	if _, ok := obj["replicas"].(int64); !ok {
+		t.Fatalf(`Expected number to be int64 but got "%T"`, obj["replicas"])
+	}
+
+	yamlWithFloat := []byte(`
+ratio: 1.42`)
+	obj = make(map[string]interface{})
+	if err := Unmarshal(yamlWithFloat, &obj); err != nil {
+		t.Fatalf("unexpected error unmarshaling yaml: %v", err)
+	}
+	if _, ok := obj["ratio"].(float64); !ok {
+		t.Fatalf(`Expected number to be float64 but got "%T"`, obj["ratio"])
+	}
+}
