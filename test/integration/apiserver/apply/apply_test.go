@@ -2869,7 +2869,7 @@ func TestApplyOnScaleDeployment(t *testing.T) {
 	var replicas int32 = 5
 	updateActor := "update_scale_test"
 
-	// Call /scale subresource to update replicas
+	// Call scale subresource to update replicas
 	_, err = client.CoreV1().RESTClient().
 		Patch(types.MergePatchType).
 		AbsPath("/apis/apps/v1").
@@ -2894,7 +2894,7 @@ func TestApplyOnScaleDeployment(t *testing.T) {
 		t.Fatalf("Expected to scale replicas to %v, but got object: \n%#v", replicas, deployment)
 	}
 
-	assertCompleteOwnership(t, (*deployment).GetManagedFields(), updateActor)
+	assertCompleteOwnership(t, (*deployment).GetManagedFields(), updateActor, "replicas")
 
 	// Re-apply the original object, it should fail with conflict because replicas have changed
 	_, err = client.CoreV1().RESTClient().Patch(types.ApplyPatchType).
@@ -2934,10 +2934,10 @@ func TestApplyOnScaleDeployment(t *testing.T) {
 		t.Fatalf("Expected to scale replicas to %v, but got object: \n%#v", replicas, deployment)
 	}
 
-	assertCompleteOwnership(t, (*deployment).GetManagedFields(), "apply_test")
+	assertCompleteOwnership(t, (*deployment).GetManagedFields(), "apply_test", "replicas")
 }
 
-func assertCompleteOwnership(t *testing.T, managedFields []metav1.ManagedFieldsEntry, fieldManager string) {
+func assertCompleteOwnership(t *testing.T, managedFields []metav1.ManagedFieldsEntry, fieldManager, replicasPath string) {
 	var managerSeen = false
 
 	for _, managedField := range managedFields {
@@ -2952,7 +2952,7 @@ func assertCompleteOwnership(t *testing.T, managedFields []metav1.ManagedFieldsE
 			continue
 		}
 
-		if _, ok := spec["f:replicas"]; !ok {
+		if _, ok := spec[fmt.Sprintf("f:%s", replicasPath)]; !ok {
 			// continue with the next managedField, as we this field does not hold the spec.replicas entry
 			continue
 		}

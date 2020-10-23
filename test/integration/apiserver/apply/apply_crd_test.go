@@ -87,7 +87,7 @@ spec:
 	if err != nil {
 		t.Fatalf("failed to create custom resource with apply: %v:\n%v", err, string(result))
 	}
-	verifyReplicas(t, result, 1)
+	verifyReplicas(t, result, 1, "replicas")
 
 	// Patch object to change the number of replicas
 	result, err = rest.Patch(types.MergePatchType).
@@ -98,7 +98,7 @@ spec:
 	if err != nil {
 		t.Fatalf("failed to update number of replicas with merge patch: %v:\n%v", err, string(result))
 	}
-	verifyReplicas(t, result, 5)
+	verifyReplicas(t, result, 5, "replicas")
 
 	// Re-apply, we should get conflicts now, since the number of replicas was changed.
 	result, err = rest.Patch(types.ApplyPatchType).
@@ -129,7 +129,7 @@ spec:
 	if err != nil {
 		t.Fatalf("failed to apply object with force after updating replicas: %v:\n%v", err, string(result))
 	}
-	verifyReplicas(t, result, 1)
+	verifyReplicas(t, result, 1, "replicas")
 
 	// Try to set managed fields using a subresource and verify that it has no effect
 	existingManagedFields, err := getManagedFields(result)
@@ -312,7 +312,7 @@ spec:
 	}
 	verifyNumFinalizers(t, result, 1)
 	verifyFinalizersIncludes(t, result, "test-finalizer")
-	verifyReplicas(t, result, 1)
+	verifyReplicas(t, result, 1, "replicas")
 	verifyNumPorts(t, result, 1)
 
 	// Patch object to add another finalizer to the finalizers list
@@ -352,7 +352,7 @@ spec:
 	if err != nil {
 		t.Fatalf("failed to update number of replicas with merge patch: %v:\n%v", err, string(result))
 	}
-	verifyReplicas(t, result, 5)
+	verifyReplicas(t, result, 5, "replicas")
 
 	// Re-apply, we should get conflicts now, since the number of replicas was changed.
 	result, err = rest.Patch(types.ApplyPatchType).
@@ -383,7 +383,7 @@ spec:
 	if err != nil {
 		t.Fatalf("failed to apply object with force after updating replicas: %v:\n%v", err, string(result))
 	}
-	verifyReplicas(t, result, 1)
+	verifyReplicas(t, result, 1, "replicas")
 
 	// New applier tries to edit an existing list item, we should get conflicts.
 	result, err = rest.Patch(types.ApplyPatchType).
@@ -551,7 +551,7 @@ spec:
 	}
 	verifyNumFinalizers(t, result, 1)
 	verifyFinalizersIncludes(t, result, "test-finalizer")
-	verifyReplicas(t, result, 1.0)
+	verifyReplicas(t, result, 1.0, "replicas")
 
 	// Patch object to add another finalizer to the finalizers list
 	result, err = rest.Patch(types.MergePatchType).
@@ -590,7 +590,7 @@ spec:
 	if err != nil {
 		t.Fatalf("failed to update number of replicas with merge patch: %v:\n%v", err, string(result))
 	}
-	verifyReplicas(t, result, 5.0)
+	verifyReplicas(t, result, 5.0, "replicas")
 
 	// Re-apply, we should get conflicts now, since the number of replicas was changed.
 	result, err = rest.Patch(types.ApplyPatchType).
@@ -621,7 +621,7 @@ spec:
 	if err != nil {
 		t.Fatalf("failed to apply object with force after updating replicas: %v:\n%v", err, string(result))
 	}
-	verifyReplicas(t, result, 1.0)
+	verifyReplicas(t, result, 1.0, "replicas")
 }
 
 // verifyNumFinalizers checks that len(.metadata.finalizers) == n
@@ -651,8 +651,8 @@ func verifyFinalizersIncludes(t *testing.T, b []byte, e string) {
 	t.Fatalf("expected finalizers to include %q but got: %v", e, obj.GetFinalizers())
 }
 
-// verifyReplicas checks that .spec.replicas == r
-func verifyReplicas(t *testing.T, b []byte, r int) {
+// verifyReplicas checks that .spec.<replicaPath> == r
+func verifyReplicas(t *testing.T, b []byte, r int, replicasPath string) {
 	obj := unstructured.Unstructured{}
 	err := obj.UnmarshalJSON(b)
 	if err != nil {
@@ -666,7 +666,7 @@ func verifyReplicas(t *testing.T, b []byte, r int) {
 	if !ok {
 		t.Fatalf("failed to find replicas number in response:\n%v", string(b))
 	}
-	replicas, ok := specMap["replicas"]
+	replicas, ok := specMap[replicasPath]
 	if !ok {
 		t.Fatalf("failed to find replicas number in response:\n%v", string(b))
 	}
@@ -675,7 +675,7 @@ func verifyReplicas(t *testing.T, b []byte, r int) {
 		t.Fatalf("failed to find replicas number in response: expected int64 but got: %v", reflect.TypeOf(replicas))
 	}
 	if actual, expected := replicasNumber, int64(r); actual != expected {
-		t.Fatalf("expected %v ports but got %v:\n%v", expected, actual, string(b))
+		t.Fatalf("expected %v replicas but got %v:\n%v", expected, actual, string(b))
 	}
 }
 
@@ -773,7 +773,7 @@ spec:
 	if err != nil {
 		t.Fatalf("failed to create custom resource with apply: %v:\n%v", err, string(result))
 	}
-	verifyReplicas(t, result, 1)
+	verifyReplicas(t, result, 1, "replicas")
 
 	// Patch object to change the number of replicas
 	result, err = rest.Patch(types.MergePatchType).
@@ -784,7 +784,7 @@ spec:
 	if err != nil {
 		t.Fatalf("failed to update number of replicas with merge patch: %v:\n%v", err, string(result))
 	}
-	verifyReplicas(t, result, 5)
+	verifyReplicas(t, result, 5, "replicas")
 
 	// Re-apply, we should get conflicts now, since the number of replicas was changed.
 	result, err = rest.Patch(types.ApplyPatchType).
@@ -815,7 +815,7 @@ spec:
 	if err != nil {
 		t.Fatalf("failed to apply object with force after updating replicas: %v:\n%v", err, string(result))
 	}
-	verifyReplicas(t, result, 1)
+	verifyReplicas(t, result, 1, "replicas")
 }
 
 func TestApplyOnScaleCRDs(t *testing.T) {
@@ -864,6 +864,8 @@ metadata:
   name: %s
 spec:
   cReplicas: 2`, apiVersion, kind, name))
+
+	// Create CRD
 	result, err := rest.Patch(types.ApplyPatchType).
 		AbsPath("/apis", noxuDefinition.Spec.Group, noxuDefinition.Spec.Version, noxuDefinition.Spec.Names.Plural).
 		Name(name).
@@ -873,6 +875,39 @@ spec:
 	if err != nil {
 		t.Fatalf("failed to create custom resource with apply: %v:\n%v", err, string(result))
 	}
+
+	replicas := 5
+	updateActor := "update_scale_test"
+
+	// Call scale subresource to update replicas
+	// TODO: is the patch type correct
+	_, err = rest.Patch(types.MergePatchType).
+		AbsPath("/apis", noxuDefinition.Spec.Group, noxuDefinition.Spec.Version, noxuDefinition.Spec.Names.Plural).
+		Name(name).
+		SubResource("scale").
+		Param("fieldManager", updateActor).
+		Body([]byte(fmt.Sprintf(`{"spec":{"replicas":%d}}`, replicas))).
+		DoRaw(context.TODO())
+	if err != nil {
+		t.Fatalf("failed to scale custom resource: %v:\n%v", err, string(result))
+	}
+
+	// Get custom resource and verify that replicas field has been updated
+	result, err = rest.
+		Get().
+		AbsPath("/apis", noxuDefinition.Spec.Group, noxuDefinition.Spec.Version, noxuDefinition.Spec.Names.Plural).
+		Name(name).
+		DoRaw(context.TODO())
+	if err != nil {
+		t.Fatalf("Failed to retrieve object: %v", err)
+	}
+	verifyReplicas(t, result, replicas, "cReplicas")
+
+	obj := unstructured.Unstructured{}
+	if err := obj.UnmarshalJSON(result); err != nil {
+		t.Fatalf("Failed to unmarshal custom resource %v", err)
+	}
+	assertCompleteOwnership(t, obj.GetManagedFields(), updateActor, "cReplicas")
 }
 
 func getManagedFields(rawResponse []byte) ([]metav1.ManagedFieldsEntry, error) {
