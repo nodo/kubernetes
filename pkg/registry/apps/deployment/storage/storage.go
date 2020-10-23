@@ -22,7 +22,6 @@ import (
 	"net/http"
 
 	"k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -412,14 +411,5 @@ func (i *scaleUpdatedObjectInfo) UpdatedObject(ctx context.Context, oldObj runti
 	deployment.Spec.Replicas = scale.Spec.Replicas
 	deployment.ResourceVersion = scale.ResourceVersion
 
-	obj, err := i.fieldManager.Update(live, deployment, i.manager)
-	if err != nil {
-		return nil, fmt.Errorf("cannot update managed field: %v", err)
-	}
-	accessor, err := meta.Accessor(obj)
-	if err != nil {
-		return nil, fmt.Errorf("cannot create accessor: %v", err)
-	}
-	deployment.ManagedFields = accessor.GetManagedFields()
-	return deployment, nil
+	return i.fieldManager.Update(live, deployment, i.manager)
 }

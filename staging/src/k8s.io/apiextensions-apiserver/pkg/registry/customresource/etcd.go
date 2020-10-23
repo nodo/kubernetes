@@ -28,6 +28,7 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apiserver/pkg/endpoints/handlers/fieldmanager"
 	"k8s.io/apiserver/pkg/registry/generic"
 	genericregistry "k8s.io/apiserver/pkg/registry/generic/registry"
 	"k8s.io/apiserver/pkg/registry/rest"
@@ -237,11 +238,15 @@ func (r *ScaleREST) Get(ctx context.Context, name string, options *metav1.GetOpt
 }
 
 func (r *ScaleREST) Update(ctx context.Context, name string, objInfo rest.UpdatedObjectInfo, createValidation rest.ValidateObjectFunc, updateValidation rest.ValidateObjectUpdateFunc, forceAllowCreate bool, options *metav1.UpdateOptions) (runtime.Object, bool, error) {
+	fmRaw := ctx.Value("fieldmanager")
+	fm := fmRaw.(*fieldmanager.FieldManager)
 	scaleObjInfo := &scaleUpdatedObjectInfo{
 		reqObjInfo:         objInfo,
 		specReplicasPath:   r.specReplicasPath,
 		labelSelectorPath:  r.labelSelectorPath,
 		statusReplicasPath: r.statusReplicasPath,
+		fieldManager:       fm,
+		manager:            options.FieldManager,
 	}
 
 	obj, _, err := r.store.Update(
@@ -348,6 +353,8 @@ type scaleUpdatedObjectInfo struct {
 	specReplicasPath   string
 	statusReplicasPath string
 	labelSelectorPath  string
+	fieldManager       *fieldmanager.FieldManager
+	manager            string
 }
 
 func (i *scaleUpdatedObjectInfo) Preconditions() *metav1.Preconditions {
@@ -357,6 +364,8 @@ func (i *scaleUpdatedObjectInfo) Preconditions() *metav1.Preconditions {
 func (i *scaleUpdatedObjectInfo) UpdatedObject(ctx context.Context, oldObj runtime.Object) (runtime.Object, error) {
 	cr := oldObj.DeepCopyObject().(*unstructured.Unstructured)
 	const invalidSpecReplicas = -2147483648 // smallest int32
+
+	// custom resource -> old scale
 	oldScale, replicasFound, err := scaleFromCustomResource(cr, i.specReplicasPath, i.statusReplicasPath, i.labelSelectorPath)
 	if err != nil {
 		return nil, err
@@ -365,6 +374,7 @@ func (i *scaleUpdatedObjectInfo) UpdatedObject(ctx context.Context, oldObj runti
 		oldScale.Spec.Replicas = invalidSpecReplicas // signal that this was not set before
 	}
 
+	// old scale -> new scale
 	obj, err := i.reqObjInfo.UpdatedObject(ctx, oldScale)
 	if err != nil {
 		return nil, err
@@ -382,6 +392,8 @@ func (i *scaleUpdatedObjectInfo) UpdatedObject(ctx context.Context, oldObj runti
 		return nil, apierrors.NewBadRequest(fmt.Sprintf("the spec replicas field %q cannot be empty", i.specReplicasPath))
 	}
 
+	live := cr.DeepCopy()
+
 	specReplicasPath := strings.TrimPrefix(i.specReplicasPath, ".") // ignore leading period
 
 	if err := unstructured.SetNestedField(cr.Object, int64(scale.Spec.Replicas), strings.Split(specReplicasPath, ".")...); err != nil {
@@ -392,5 +404,6 @@ func (i *scaleUpdatedObjectInfo) UpdatedObject(ctx context.Context, oldObj runti
 		// Set that precondition and return any conflict errors to the client.
 		cr.SetResourceVersion(scale.ResourceVersion)
 	}
-	return cr, nil
+
+	return i.fieldManager.Update(live, cr, i.manager)
 }

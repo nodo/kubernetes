@@ -839,6 +839,33 @@ func (r *crdHandler) getOrCreateServingInfoFor(uid types.UID, name string) (*crd
 
 			MaxRequestBodyBytes: r.maxRequestBodyBytes,
 		}
+		// override scaleSpec subresource values
+		// shallow copy
+		scaleScope := *requestScopes[v.Name]
+		scaleConverter := scale.NewScaleConverter()
+		scaleScope.Subresource = "scale"
+		scaleScope.Serializer = serializer.NewCodecFactory(scaleConverter.Scheme())
+		scaleScope.Kind = autoscalingv1.SchemeGroupVersion.WithKind("Scale")
+		scaleScope.Namer = handlers.ContextBasedNaming{
+			SelfLinker:         meta.NewAccessor(),
+			ClusterScoped:      clusterScoped,
+			SelfLinkPathPrefix: selfLinkPrefix,
+			SelfLinkPathSuffix: "/scale",
+		}
+		scaleScopes[v.Name] = &scaleScope
+
+		// override status subresource values
+		// shallow copy
+		statusScope := *requestScopes[v.Name]
+		statusScope.Subresource = "status"
+		statusScope.Namer = handlers.ContextBasedNaming{
+			SelfLinker:         meta.NewAccessor(),
+			ClusterScoped:      clusterScoped,
+			SelfLinkPathPrefix: selfLinkPrefix,
+			SelfLinkPathSuffix: "/status",
+		}
+		statusScopes[v.Name] = &statusScope
+
 		if utilfeature.DefaultFeatureGate.Enabled(features.ServerSideApply) {
 			reqScope := *requestScopes[v.Name]
 			reqScope.FieldManager, err = fieldmanager.NewDefaultCRDFieldManager(
@@ -855,29 +882,7 @@ func (r *crdHandler) getOrCreateServingInfoFor(uid types.UID, name string) (*crd
 				return nil, err
 			}
 			requestScopes[v.Name] = &reqScope
-		}
 
-		// override scaleSpec subresource values
-		// shallow copy
-		scaleScope := *requestScopes[v.Name]
-		scaleConverter := scale.NewScaleConverter()
-		scaleScope.Subresource = "scale"
-		scaleScope.Serializer = serializer.NewCodecFactory(scaleConverter.Scheme())
-		scaleScope.Kind = autoscalingv1.SchemeGroupVersion.WithKind("Scale")
-		scaleScope.Namer = handlers.ContextBasedNaming{
-			SelfLinker:         meta.NewAccessor(),
-			ClusterScoped:      clusterScoped,
-			SelfLinkPathPrefix: selfLinkPrefix,
-			SelfLinkPathSuffix: "/scale",
-		}
-		// TODO(issues.k8s.io/82046): We can't effectively track ownership on scale requests yet.
-		scaleScope.FieldManager = nil
-		scaleScopes[v.Name] = &scaleScope
-
-		// override status subresource values
-		// shallow copy
-		statusScope := *requestScopes[v.Name]
-		if utilfeature.DefaultFeatureGate.Enabled(features.ServerSideApply) {
 			statusScope.FieldManager, err = fieldmanager.NewDefaultCRDFieldManager(
 				openAPIModels,
 				statusScope.Convertor,
@@ -891,15 +896,23 @@ func (r *crdHandler) getOrCreateServingInfoFor(uid types.UID, name string) (*crd
 			if err != nil {
 				return nil, err
 			}
+
+			scaleScope.FieldManager, err = fieldmanager.NewDefaultCRDFieldManager(
+				openAPIModels,
+				scaleScope.Convertor,
+				scaleScope.Defaulter,
+				scaleScope.Creater,
+				scaleScope.Kind,
+				scaleScope.HubGroupVersion,
+				crd.Spec.PreserveUnknownFields,
+				true,
+			)
+			if err != nil {
+				return nil, err
+			}
+
+			scaleScope.ParentFieldManager = reqScope.FieldManager
 		}
-		statusScope.Subresource = "status"
-		statusScope.Namer = handlers.ContextBasedNaming{
-			SelfLinker:         meta.NewAccessor(),
-			ClusterScoped:      clusterScoped,
-			SelfLinkPathPrefix: selfLinkPrefix,
-			SelfLinkPathSuffix: "/status",
-		}
-		statusScopes[v.Name] = &statusScope
 
 		if v.Deprecated {
 			deprecated[v.Name] = true
