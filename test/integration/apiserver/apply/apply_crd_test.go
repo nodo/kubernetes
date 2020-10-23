@@ -818,6 +818,63 @@ spec:
 	verifyReplicas(t, result, 1)
 }
 
+func TestApplyOnScaleCRDs(t *testing.T) {
+	defer featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, genericfeatures.ServerSideApply, true)()
+
+	server, err := apiservertesting.StartTestServer(t, apiservertesting.NewDefaultTestServerOptions(), nil, framework.SharedEtcd())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer server.TearDownFn()
+	config := server.ClientConfig
+
+	apiExtensionClient, err := clientset.NewForConfig(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dynamicClient, err := dynamic.NewForConfig(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	noxuDefinition := fixtures.NewNoxuCustomResourceDefinition(apiextensionsv1beta1.ClusterScoped)
+	noxuDefinition.Spec.Subresources = &apiextensionsv1beta1.CustomResourceSubresources{
+		Scale: &apiextensionsv1beta1.CustomResourceSubresourceScale{
+			SpecReplicasPath:   ".spec.cReplicas",
+			StatusReplicasPath: ".status.cReplicas",
+		},
+	}
+
+	noxuDefinition, err = fixtures.CreateNewCustomResourceDefinition(noxuDefinition, apiExtensionClient, dynamicClient)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	kind := noxuDefinition.Spec.Names.Kind
+	apiVersion := noxuDefinition.Spec.Group + "/" + noxuDefinition.Spec.Version
+	name := "mytest"
+
+	rest := apiExtensionClient.Discovery().RESTClient()
+
+	yamlBody := []byte(fmt.Sprintf(`
+---
+apiVersion: %s
+kind: %s
+metadata:
+  name: %s
+spec:
+  cReplicas: 2`, apiVersion, kind, name))
+	result, err := rest.Patch(types.ApplyPatchType).
+		AbsPath("/apis", noxuDefinition.Spec.Group, noxuDefinition.Spec.Version, noxuDefinition.Spec.Names.Plural).
+		Name(name).
+		Param("fieldManager", "apply_test").
+		Body(yamlBody).
+		DoRaw(context.TODO())
+	if err != nil {
+		t.Fatalf("failed to create custom resource with apply: %v:\n%v", err, string(result))
+	}
+}
+
 func getManagedFields(rawResponse []byte) ([]metav1.ManagedFieldsEntry, error) {
 	obj := unstructured.Unstructured{}
 	if err := obj.UnmarshalJSON(rawResponse); err != nil {

@@ -22,9 +22,11 @@ import (
 	"net/http"
 
 	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apiserver/pkg/endpoints/handlers/fieldmanager"
 	"k8s.io/apiserver/pkg/registry/generic"
 	genericregistry "k8s.io/apiserver/pkg/registry/generic/registry"
 	"k8s.io/apiserver/pkg/registry/rest"
@@ -279,10 +281,12 @@ func (r *ScaleREST) Get(ctx context.Context, name string, options *metav1.GetOpt
 
 // Update alters scale subset of Deployment object.
 func (r *ScaleREST) Update(ctx context.Context, name string, objInfo rest.UpdatedObjectInfo, createValidation rest.ValidateObjectFunc, updateValidation rest.ValidateObjectUpdateFunc, forceAllowCreate bool, options *metav1.UpdateOptions) (runtime.Object, bool, error) {
+	fmRaw := ctx.Value("fieldmanager")
+	fm := fmRaw.(*fieldmanager.FieldManager)
 	obj, _, err := r.store.Update(
 		ctx,
 		name,
-		&scaleUpdatedObjectInfo{name, objInfo},
+		&scaleUpdatedObjectInfo{name, objInfo, fm, options.FieldManager},
 		toScaleCreateValidation(createValidation),
 		toScaleUpdateValidation(updateValidation),
 		false,
@@ -350,8 +354,10 @@ func scaleFromDeployment(deployment *apps.Deployment) (*autoscaling.Scale, error
 
 // scaleUpdatedObjectInfo transforms existing deployment -> existing scale -> new scale -> new deployment
 type scaleUpdatedObjectInfo struct {
-	name       string
-	reqObjInfo rest.UpdatedObjectInfo
+	name         string
+	reqObjInfo   rest.UpdatedObjectInfo
+	fieldManager *fieldmanager.FieldManager
+	manager      string
 }
 
 func (i *scaleUpdatedObjectInfo) Preconditions() *metav1.Preconditions {
@@ -401,8 +407,19 @@ func (i *scaleUpdatedObjectInfo) UpdatedObject(ctx context.Context, oldObj runti
 		)
 	}
 
-	// move replicas/resourceVersion fields to object and return
+	live := deployment.DeepCopy()
+
 	deployment.Spec.Replicas = scale.Spec.Replicas
 	deployment.ResourceVersion = scale.ResourceVersion
+
+	obj, err := i.fieldManager.Update(live, deployment, i.manager)
+	if err != nil {
+		return nil, fmt.Errorf("cannot update managed field: %v", err)
+	}
+	accessor, err := meta.Accessor(obj)
+	if err != nil {
+		return nil, fmt.Errorf("cannot create accessor: %v", err)
+	}
+	deployment.ManagedFields = accessor.GetManagedFields()
 	return deployment, nil
 }
