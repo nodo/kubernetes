@@ -575,6 +575,26 @@ func (a *APIInstaller) registerResourceHandlers(path string, storage rest.Storag
 		if err != nil {
 			return nil, fmt.Errorf("failed to create field manager: %v", err)
 		}
+
+		if subresource == "scale" {
+			parentResourceGVK, err := GetResourceKind(a.group.GroupVersion, a.group.Storage[resource], a.group.Typer)
+			if err != nil {
+				return nil, err
+			}
+
+			reqScope.ParentFieldManager, err = fieldmanager.NewDefaultFieldManager(
+				a.group.TypeConverter,
+				a.group.UnsafeConvertor,
+				a.group.Defaulter,
+				a.group.Creater,
+				parentResourceGVK,
+				reqScope.HubGroupVersion,
+				false,
+			)
+			if err != nil {
+				return nil, fmt.Errorf("failed to create parent field manager: %v", err)
+			}
+		}
 	}
 	for _, action := range actions {
 		producedObject := storageMeta.ProducesObject(action.Verb)
