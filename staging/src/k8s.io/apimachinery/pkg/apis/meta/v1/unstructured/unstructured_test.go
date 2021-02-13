@@ -20,12 +20,14 @@ import (
 	"math/rand"
 	"reflect"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"k8s.io/apimachinery/pkg/api/apitesting/fuzzer"
 	"k8s.io/apimachinery/pkg/api/equality"
 	metafuzzer "k8s.io/apimachinery/pkg/apis/meta/fuzzer"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
@@ -125,6 +127,23 @@ func TestUnstructuredMetadataOmitempty(t *testing.T) {
 
 	if !reflect.DeepEqual(gotMetadata, emptyMetadata) {
 		t.Errorf("expected %v, got %v", emptyMetadata, gotMetadata)
+	}
+}
+
+func TestUnstructuredTimeInManagedFields(t *testing.T) {
+	testTime, _ := time.ParseInLocation("2006-Jan-02", "2013-Feb-03", time.UTC)
+	managedFieldTime := v1.NewTime(testTime)
+	u := &unstructured.Unstructured{Object: map[string]interface{}{}}
+
+	input := []metav1.ManagedFieldsEntry{
+		{
+			Time: &managedFieldTime,
+		},
+	}
+
+	u.SetManagedFields(input)
+	if !reflect.DeepEqual(input, u.GetManagedFields()) {
+		t.Errorf("expected %v, got %v", input, u.GetManagedFields())
 	}
 }
 
