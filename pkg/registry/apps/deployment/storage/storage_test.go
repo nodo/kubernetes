@@ -284,6 +284,82 @@ func TestScaleUpdate(t *testing.T) {
 	}
 }
 
+func TestScaleUpdateWithCustomRequestInfo(t *testing.T) {
+	storage, server := newStorage(t)
+	defer server.Terminate(t)
+	defer storage.Deployment.Store.DestroyFunc()
+	var deployment apps.Deployment
+	ctx := genericapirequest.WithNamespace(genericapirequest.NewContext(), namespace)
+	ctx = genericapirequest.WithRequestInfo(ctx, &genericapirequest.RequestInfo{
+		APIGroup:   "apps",
+		APIVersion: "v2",
+	})
+	key := "/deployments/" + namespace + "/" + name
+	deploymentToScale := *validNewDeployment()
+	deploymentToScale.SetManagedFields([]metav1.ManagedFieldsEntry{
+		{
+			Manager:    "manager",
+			Operation:  metav1.ManagedFieldsOperationApply,
+			APIVersion: "apps/v1",
+			FieldsType: "FieldsV1",
+			FieldsV1:   &metav1.FieldsV1{Raw: []byte(`{"f:spec":{"f:replicas":{}}}`)},
+		},
+	})
+
+	if err := storage.Deployment.Storage.Create(ctx, key, &deploymentToScale, &deployment, 0, false); err != nil {
+		t.Fatalf("error setting new deployment (key: %s) %v: %v", key, validDeployment, err)
+	}
+	replicas := int32(12)
+	update := autoscaling.Scale{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: namespace,
+			ManagedFields: []metav1.ManagedFieldsEntry{
+				{
+					Manager:    "scale",
+					Operation:  metav1.ManagedFieldsOperationUpdate,
+					APIVersion: "autoscaling/v1",
+					FieldsType: "FieldsV1",
+					FieldsV1:   &metav1.FieldsV1{Raw: []byte(`{"f:spec":{"f:replicas":{}}}`)},
+				},
+			},
+		},
+		Spec: autoscaling.ScaleSpec{
+			Replicas: replicas,
+		},
+	}
+
+	if _, _, err := storage.Scale.Update(ctx, update.Name, rest.DefaultUpdatedObjectInfo(&update), rest.ValidateAllObjectFunc, rest.ValidateAllObjectUpdateFunc, false, &metav1.UpdateOptions{}); err != nil {
+		t.Fatalf("error updating scale %v: %v", update, err)
+	}
+	obj, err := storage.Scale.Get(ctx, name, &metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("error fetching scale for %s: %v", name, err)
+	}
+	scale := obj.(*autoscaling.Scale)
+	if scale.Spec.Replicas != replicas {
+		t.Errorf("wrong replicas count expected: %d got: %d", replicas, deployment.Spec.Replicas)
+	}
+
+	newDeploymentObj, err := storage.Deployment.Get(ctx, name, &metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("error fetching deployment %s: %v", name, err)
+	}
+	newDeployment := newDeploymentObj.(*apps.Deployment)
+
+	// Even if the request was containing a request info with APIGroup set to
+	// "apps" and version "v2", we expect the managed fields to have an entry for
+	// "scale" with version "v1".  The reason is because there isn't a mapping
+	// from "apps/v2" to the replicas path, so we default to "apps/v1".
+	if len(newDeployment.GetManagedFields()) != 1 {
+		t.Fatalf("expected managed fields of deployment %s to have length 1, got %d", name, len(newDeployment.GetManagedFields()))
+	}
+	entry := newDeployment.GetManagedFields()[0]
+	if entry.Manager != "scale" || entry.APIVersion != "apps/v1" {
+		t.Fatalf(`expected an manager field entry entry with manager: "scale" and APIVersion: "apps/v1", got %v`, entry)
+	}
+}
+
 func TestStatusUpdate(t *testing.T) {
 	storage, server := newStorage(t)
 	defer server.Terminate(t)

@@ -26,6 +26,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apiserver/pkg/endpoints/handlers/fieldmanager"
+	genericapirequest "k8s.io/apiserver/pkg/endpoints/request"
 	"k8s.io/apiserver/pkg/registry/generic"
 	genericregistry "k8s.io/apiserver/pkg/registry/generic/registry"
 	"k8s.io/apiserver/pkg/registry/rest"
@@ -383,9 +384,17 @@ func (i *scaleUpdatedObjectInfo) UpdatedObject(ctx context.Context, oldObj runti
 		return nil, errors.NewNotFound(apps.Resource("deployments/scale"), i.name)
 	}
 
+	defaultGroupVersion := schema.GroupVersion{Group: "apps", Version: "v1"}
+	if requestInfo, found := genericapirequest.RequestInfoFrom(ctx); found {
+		groupVersion := schema.GroupVersion{Group: requestInfo.APIGroup, Version: requestInfo.APIVersion}
+		if _, ok := replicasPathInDeployment[groupVersion.String()]; ok {
+			defaultGroupVersion = groupVersion
+		}
+	}
+
 	managedFieldsHandler := fieldmanager.NewScaleHandler(
 		deployment.ManagedFields,
-		schema.GroupVersion{Group: "apps", Version: "v1"},
+		defaultGroupVersion,
 		replicasPathInDeployment,
 	)
 
