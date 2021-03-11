@@ -76,7 +76,7 @@ func NewCRDStructuredMergeManager(typeConverter TypeConverter, objectConverter r
 func (f *structuredMergeManager) Update(liveObj, newObj runtime.Object, managed Managed, manager string) (runtime.Object, Managed, error) {
 	newObjVersioned, err := f.toVersioned(newObj)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to convert new object to proper version: %v", err)
+		return nil, nil, fmt.Errorf("failed to convert new object to proper version: %v (from %v to %v)", err, newObj.GetObjectKind().GroupVersionKind(), f.groupVersion)
 	}
 	liveObjVersioned, err := f.toVersioned(liveObj)
 	if err != nil {
@@ -165,9 +165,17 @@ func (f *structuredMergeManager) Apply(liveObj, patchObj runtime.Object, managed
 }
 
 func (f *structuredMergeManager) toVersioned(obj runtime.Object) (runtime.Object, error) {
+	// QUESTION(nodo): That seems reasonable I think, but not clear if this is the right fix yet
+	if obj.GetObjectKind().GroupVersionKind().GroupVersion() == f.groupVersion {
+		return obj, nil
+	}
 	return f.objectConverter.ConvertToVersion(obj, f.groupVersion)
 }
 
 func (f *structuredMergeManager) toUnversioned(obj runtime.Object) (runtime.Object, error) {
+	// QUESTION(nodo): That seems reasonable I think, but not clear if this is the right fix yet
+	if obj.GetObjectKind().GroupVersionKind().GroupVersion() == f.groupVersion {
+		return obj, nil
+	}
 	return f.objectConverter.ConvertToVersion(obj, f.hubVersion)
 }
